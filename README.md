@@ -33,3 +33,23 @@ which approach it took
 mention the machine learning algorithm it used
 mention what it found
 mention how to fix it
+
+************************** MY THIRD IMPORTANT PROMPT ********************************
+
+update the dataset you produced: patients, patient visits, charges
+
+have following scenarios added for atleast 100% of the data set. you can increase the data set
+
+1. one service to dominate the late charges, so 25% of all late charges should belong to a service
+
+2. add services from pharmacy and radiology as well, all previous services will belong to lab
+
+3. show that late charges mostly come from lab but some do also come from pharmacy and radiology
+
+4. show that bad debt cases also come due to following cases
+4.1 length of stay more than 10 days
+4.2 age of person more than 70 years
+4.3 due to certain service charges mostly coming in late
+4.4 due to certain type of ailment, show that if someone has cancer then it can be a source of higher bad debt
+4.5 add some other cases of bad debt as well
+
