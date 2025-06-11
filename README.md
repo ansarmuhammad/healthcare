@@ -53,3 +53,9 @@ have following scenarios added for atleast 100% of the data set. you can increas
 4.4 due to certain type of ailment, show that if someone has cancer then it can be a source of higher bad debt
 4.5 add some other cases of bad debt as well
 
+******************* Fourth prompt ***********************************************************
+
+now give me a fresh program that would analyze all this data and come up with reasons for bad debt.  it should also give ordered list of reasons and give some probability for each reason
+
+
+
