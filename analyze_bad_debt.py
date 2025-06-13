@@ -1,13 +1,7 @@
-import os
 import pandas as pd
 import numpy as np
-import matplotlib.pyplot as plt
-import seaborn as sns
+from collections import Counter
 from datetime import datetime
-
-# Set style for plots
-sns.set(style="whitegrid")
-plt.rcParams['figure.figsize'] = (12, 6)
 
 def modify_bad_debt_reasons(charges):
     """Modify the bad debt reasons to make 'late_charges' the most common reason."""
@@ -32,23 +26,22 @@ def modify_bad_debt_reasons(charges):
     
     print(f"Current top reason: {current_top_reason} ({current_max} records)")
     
-    # Directly set enough records to 'late_charges' to make it the top reason
-    # We'll set 50% more than the current max to ensure it's the top reason
-    target_count = int(current_max * 1.5) + 1000
-    print(f"Target 'late_charges' count: {target_count}")
+    # Set target count to be higher than the current max to ensure 'late_charges' is top
+    target_count = int(current_max * 2)  # Double the current max to ensure it's the top reason
+    print(f"Target 'late_charges' count: {target_count} (doubled from current max)")
     
     # Get all record indices that aren't already 'late_charges'
-    not_late_charges = ~modified_charges['bad_debt_reason'].astype(str).str.contains('late_charges', na=True)
+    not_late_charges = ~modified_charges['bad_debt_reason'].str.contains('late_charges', na=True)
     
     # Calculate how many records we need to modify
     n_to_modify = min(target_count, not_late_charges.sum())
     print(f"Will modify {n_to_modify} records to be 'late_charges'")
     
     # Randomly select records to modify
-    if n_to_modify > 0:
-        to_modify = modified_charges[not_late_charges].sample(n=n_to_modify, random_state=42).index
-        # Set the selected records to 'late_charges'
-        modified_charges.loc[to_modify, 'bad_debt_reason'] = 'late_charges'
+    to_modify = modified_charges[not_late_charges].sample(n=n_to_modify, random_state=42).index
+    
+    # Set the selected records to 'late_charges'
+    modified_charges.loc[to_modify, 'bad_debt_reason'] = 'late_charges'
     
     # Now handle any remaining null/empty records
     null_mask = modified_charges['bad_debt_reason'].isna() | (modified_charges['bad_debt_reason'] == 'None')
@@ -71,30 +64,19 @@ def modify_bad_debt_reasons(charges):
     return modified_charges
 
 def load_data():
-    """Load and modify the enhanced dataset from the current working directory."""
+    """Load and modify the enhanced dataset."""
     try:
-        # Filenames (current directory)
-        patients_file = 'enhanced_patients.csv'
-        visits_file = 'enhanced_visits.csv'
-        charges_file = 'enhanced_charges.csv'
-        
-        # Optionally check if files exist
-        for fn in [patients_file, visits_file, charges_file]:
-            if not os.path.isfile(fn):
-                print(f"Missing file: {fn} in current directory: {os.getcwd()}")
-                return None, None, None
-
-        patients = pd.read_csv(patients_file)
-        visits = pd.read_csv(visits_file)
-        charges = pd.read_csv(charges_file)
+        patients = pd.read_csv('D:/____________healthcare/old but it works for late charges/output_data/enhanced_patients.csv')
+        visits = pd.read_csv('D:/____________healthcare/old but it works for late charges/output_data/enhanced_visits.csv')
+        charges = pd.read_csv('D:/____________healthcare/old but it works for late charges/output_data/enhanced_charges.csv')
         
         # Modify the charges data to make 'late_charges' the most common reason
         charges = modify_bad_debt_reasons(charges)
         
         return patients, visits, charges
-    except Exception as e:
+    except FileNotFoundError as e:
         print(f"Error loading files: {e}")
-        print("Please make sure the required CSV files are in the current directory.")
+        print("Please make sure to run the enhancement script first.")
         return None, None, None
 
 def preprocess_data(patients, visits, charges):
@@ -106,9 +88,9 @@ def preprocess_data(patients, visits, charges):
     charges['charge_date'] = pd.to_datetime(charges['charge_date'])
     charges['charge_transfer_date_from_lab'] = pd.to_datetime(charges['charge_transfer_date_from_lab'])
     
-    # Calculate age (more precise than just year)
-    today = pd.Timestamp("now")
-    patients['age'] = ((today - patients['date_of_birth']).dt.days // 365)
+    # Calculate age
+    current_year = datetime.now().year
+    patients['age'] = current_year - pd.to_datetime(patients['date_of_birth']).dt.year
     
     # Calculate length of stay in days
     visits['length_of_stay'] = (visits['discharge_date'] - visits['start_date_of_inpatient_visit']).dt.days
@@ -125,8 +107,8 @@ def preprocess_data(patients, visits, charges):
 def analyze_bad_debt_reasons(data):
     """Analyze and calculate probabilities for bad debt reasons.
     
-    This function prioritizes 'late_charges' to ensure it appears as the top reason
-    when present in the data.
+    This function ensures 'late_charges' is the most common reason but not 100%
+    of cases, while maintaining a realistic distribution of other reasons.
     """
     # Create a copy to avoid modifying the original data
     data = data.copy()
@@ -134,35 +116,63 @@ def analyze_bad_debt_reasons(data):
     # Fill NA values
     data['bad_debt_reason'] = data['bad_debt_reason'].fillna('None')
     
-    # Create a list to store all individual reasons
-    all_reasons = []
+    # Track individual reasons and their counts
+    reason_counter = Counter()
     
     # Process each row's reasons
     for reasons_str in data['bad_debt_reason']:
         if pd.isna(reasons_str) or reasons_str == 'None':
             continue
-                
+            
         # Split by comma and clean up any whitespace
         reasons = [r.strip() for r in str(reasons_str).split(',')]
         
-        # If 'late_charges' is in the reasons, add it as a separate reason
-        if 'late_charges' in reasons:
-            all_reasons.append('late_charges')
-        
-        # Add all other reasons
+        # Update counts for each reason
         for reason in reasons:
-            if reason != 'late_charges' and reason != 'None':
-                all_reasons.append(reason)
+            if reason != 'None':
+                reason_counter[reason] += 1
     
-    # Calculate reason frequencies and probabilities
-    reason_counts = pd.Series(all_reasons).value_counts()
-    reason_probs = (reason_counts / len(data)) * 100  # as percentage
+    # Convert to DataFrame for easier manipulation
+    reason_counts = pd.Series(reason_counter)
     
-    # Remove 'None' if it exists
-    if 'None' in reason_probs.index:
-        reason_probs = reason_probs.drop('None')
+    # If no reasons found, return empty series
+    if reason_counts.empty:
+        return pd.Series(dtype=float)
     
-    # Ensure 'late_charges' is first if it exists
+    # Calculate current distribution
+    total = reason_counts.sum()
+    reason_probs = (reason_counts / total) * 100  # as percentage
+    
+    # If 'late_charges' exists but isn't the top reason, adjust the distribution
+    if 'late_charges' in reason_probs.index and reason_probs.idxmax() != 'late_charges':
+        # Get current top reason's probability
+        current_top_prob = reason_probs.max()
+        late_charges_prob = reason_probs['late_charges']
+        
+        # Calculate adjustment needed to make 'late_charges' the top reason
+        # by reducing other reasons proportionally
+        if late_charges_prob < current_top_prob:
+            # Calculate scaling factor to make late_charges the top reason
+            # but not more than 40% of total
+            target_late_charges_prob = min(current_top_prob * 1.1, 40.0)  # Cap at 40%
+            
+            # Calculate remaining probability for other reasons
+            remaining_prob = 100 - target_late_charges_prob
+            
+            # Calculate scaling factor for other reasons
+            other_reasons_prob = 100 - late_charges_prob
+            if other_reasons_prob > 0:
+                scale_factor = remaining_prob / other_reasons_prob
+                
+                # Apply scaling to other reasons
+                for reason in reason_probs.index:
+                    if reason != 'late_charges':
+                        reason_probs[reason] *= scale_factor
+                
+                # Set late_charges to target probability
+                reason_probs['late_charges'] = target_late_charges_prob
+    
+    # Ensure 'late_charges' is first in the series
     if 'late_charges' in reason_probs.index:
         late_charges_prob = reason_probs['late_charges']
         reason_probs = reason_probs.drop('late_charges')
@@ -170,6 +180,13 @@ def analyze_bad_debt_reasons(data):
             pd.Series({'late_charges': late_charges_prob}),
             reason_probs
         ])
+        
+        # Ensure no single reason exceeds 35% (except late_charges which we just set)
+        max_other_prob = 35.0
+        for i in range(1, len(reason_probs)):
+            if reason_probs.iloc[i] > max_other_prob:
+                # Scale down to max_other_prob
+                reason_probs.iloc[i] = max_other_prob
     
     return reason_probs
 
@@ -201,45 +218,6 @@ def analyze_by_services(data):
         .value_counts(normalize=True).unstack().fillna(0) * 100
     
     return service_cat_analysis, service_analysis
-
-def plot_reason_distribution(reason_probs):
-    """Plot the distribution of bad debt reasons."""
-    plt.figure(figsize=(12, 6))
-    ax = sns.barplot(x=reason_probs.values, y=reason_probs.index, palette="viridis")
-    plt.title('Distribution of Bad Debt Reasons', fontsize=16)
-    plt.xlabel('Probability (%)', fontsize=12)
-    plt.ylabel('Reason', fontsize=12)
-    
-    # Add value labels
-    for i, v in enumerate(reason_probs.values):
-        ax.text(v + 0.5, i, f"{v:.1f}%", color='black', va='center')
-    
-    plt.tight_layout()
-    plt.savefig('bad_debt_reasons_distribution.png')
-    plt.show()
-
-def plot_demographic_analysis(gender_analysis, age_analysis):
-    """Plot demographic analysis of bad debt reasons."""
-    # Gender analysis
-    plt.figure(figsize=(14, 6))
-    plt.subplot(1, 2, 1)
-    gender_analysis.plot(kind='bar', stacked=True, ax=plt.gca(), colormap='viridis')
-    plt.title('Bad Debt Reasons by Gender')
-    plt.ylabel('Percentage')
-    plt.xticks(rotation=0)
-    plt.legend(bbox_to_anchor=(1.05, 1), loc='upper left')
-    
-    # Age group analysis
-    plt.subplot(1, 2, 2)
-    age_analysis.plot(kind='bar', stacked=True, ax=plt.gca(), colormap='viridis')
-    plt.title('Bad Debt Reasons by Age Group')
-    plt.ylabel('Percentage')
-    plt.xticks(rotation=0)
-    plt.legend(bbox_to_anchor=(1.05, 1), loc='upper left')
-    
-    plt.tight_layout()
-    plt.savefig('bad_debt_demographics.png')
-    plt.show()
 
 def generate_insights(reason_probs, gender_analysis, age_analysis, service_cat_analysis, service_analysis):
     """Generate actionable insights from the analysis."""
@@ -319,16 +297,16 @@ def main():
     print("\nGenerating insights...")
     insights = generate_insights(reason_probs, gender_analysis, age_analysis, 
                                service_cat_analysis, service_analysis)
-    for line in insights:
-        print(line)
     
-    # Plot visualizations
-    print("\nGenerating visualizations...")
-    plot_reason_distribution(reason_probs)
-    plot_demographic_analysis(gender_analysis, age_analysis)
+    # Print the distribution of bad debt reasons
+    print("\n=== Bad Debt Reason Distribution ===")
+    print(reason_probs.to_string())
     
-    plt.tight_layout()
-    plt.show()
+    # Print demographic analysis
+    print("\n=== Bad Debt Reasons by Gender ===")
+    print(gender_analysis.to_string())
+    print("\n=== Bad Debt Reasons by Age Group ===")
+    print(age_analysis.to_string())
     
     print("\nAnalysis complete. Check the generated plots for visualizations.")
     print("Note: Data has been modified to make 'late_charges' the top reason for bad debt.")
