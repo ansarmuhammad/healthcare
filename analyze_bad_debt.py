@@ -1,8 +1,8 @@
+import os
 import pandas as pd
 import numpy as np
 import matplotlib.pyplot as plt
 import seaborn as sns
-from collections import Counter
 from datetime import datetime
 
 # Set style for plots
@@ -38,17 +38,17 @@ def modify_bad_debt_reasons(charges):
     print(f"Target 'late_charges' count: {target_count}")
     
     # Get all record indices that aren't already 'late_charges'
-    not_late_charges = ~modified_charges['bad_debt_reason'].str.contains('late_charges', na=True)
+    not_late_charges = ~modified_charges['bad_debt_reason'].astype(str).str.contains('late_charges', na=True)
     
     # Calculate how many records we need to modify
     n_to_modify = min(target_count, not_late_charges.sum())
     print(f"Will modify {n_to_modify} records to be 'late_charges'")
     
     # Randomly select records to modify
-    to_modify = modified_charges[not_late_charges].sample(n=n_to_modify, random_state=42).index
-    
-    # Set the selected records to 'late_charges'
-    modified_charges.loc[to_modify, 'bad_debt_reason'] = 'late_charges'
+    if n_to_modify > 0:
+        to_modify = modified_charges[not_late_charges].sample(n=n_to_modify, random_state=42).index
+        # Set the selected records to 'late_charges'
+        modified_charges.loc[to_modify, 'bad_debt_reason'] = 'late_charges'
     
     # Now handle any remaining null/empty records
     null_mask = modified_charges['bad_debt_reason'].isna() | (modified_charges['bad_debt_reason'] == 'None')
@@ -71,19 +71,30 @@ def modify_bad_debt_reasons(charges):
     return modified_charges
 
 def load_data():
-    """Load and modify the enhanced dataset."""
+    """Load and modify the enhanced dataset from the current working directory."""
     try:
-        patients = pd.read_csv('D:/____________healthcare/old but it works for late charges/output_data/enhanced_patients.csv')
-        visits = pd.read_csv('D:/____________healthcare/old but it works for late charges/output_data/enhanced_visits.csv')
-        charges = pd.read_csv('D:/____________healthcare/old but it works for late charges/output_data/enhanced_charges.csv')
+        # Filenames (current directory)
+        patients_file = 'enhanced_patients.csv'
+        visits_file = 'enhanced_visits.csv'
+        charges_file = 'enhanced_charges.csv'
+        
+        # Optionally check if files exist
+        for fn in [patients_file, visits_file, charges_file]:
+            if not os.path.isfile(fn):
+                print(f"Missing file: {fn} in current directory: {os.getcwd()}")
+                return None, None, None
+
+        patients = pd.read_csv(patients_file)
+        visits = pd.read_csv(visits_file)
+        charges = pd.read_csv(charges_file)
         
         # Modify the charges data to make 'late_charges' the most common reason
         charges = modify_bad_debt_reasons(charges)
         
         return patients, visits, charges
-    except FileNotFoundError as e:
+    except Exception as e:
         print(f"Error loading files: {e}")
-        print("Please make sure to run the enhancement script first.")
+        print("Please make sure the required CSV files are in the current directory.")
         return None, None, None
 
 def preprocess_data(patients, visits, charges):
@@ -95,9 +106,9 @@ def preprocess_data(patients, visits, charges):
     charges['charge_date'] = pd.to_datetime(charges['charge_date'])
     charges['charge_transfer_date_from_lab'] = pd.to_datetime(charges['charge_transfer_date_from_lab'])
     
-    # Calculate age
-    current_year = datetime.now().year
-    patients['age'] = current_year - pd.to_datetime(patients['date_of_birth']).dt.year
+    # Calculate age (more precise than just year)
+    today = pd.Timestamp("now")
+    patients['age'] = ((today - patients['date_of_birth']).dt.days // 365)
     
     # Calculate length of stay in days
     visits['length_of_stay'] = (visits['discharge_date'] - visits['start_date_of_inpatient_visit']).dt.days
@@ -130,7 +141,7 @@ def analyze_bad_debt_reasons(data):
     for reasons_str in data['bad_debt_reason']:
         if pd.isna(reasons_str) or reasons_str == 'None':
             continue
-            
+                
         # Split by comma and clean up any whitespace
         reasons = [r.strip() for r in str(reasons_str).split(',')]
         
@@ -308,6 +319,8 @@ def main():
     print("\nGenerating insights...")
     insights = generate_insights(reason_probs, gender_analysis, age_analysis, 
                                service_cat_analysis, service_analysis)
+    for line in insights:
+        print(line)
     
     # Plot visualizations
     print("\nGenerating visualizations...")
